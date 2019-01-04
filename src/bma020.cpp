@@ -1,50 +1,69 @@
 #include "bma020.h"
-
+#include "fakedata.h"
 #include "sensor.h"
 
 #include <Arduino.h>
 
 
-BMA020::BMA020() : TwoWire ()
+Fake_BMA020::Fake_BMA020()
 {
 }
 
-uint8_t BMA020::writeReg (uint8_t reg, uint8_t value)
+void Fake_BMA020::begin (uint8_t reg1, uint8_t reg2)
 {
-    beginTransmission (BMA029ADDR);
-    write (reg);
-    write (value);
-    return endTransmission();
+    // useless
+    reg1 += reg2;
 }
 
-uint8_t BMA020::readReg (uint8_t reg, uint8_t *buf, uint8_t &size)
+uint8_t Fake_BMA020::writeReg (uint8_t reg, uint8_t value)
 {
-    beginTransmission (BMA029ADDR);
-    write (reg);
-    endTransmission();
-    requestFrom ((uint8_t)BMA029ADDR, (size_t)size, (bool)true);
-
-    uint8_t ctr = 0;
-
-    while (available() && (ctr < size))
+    switch (reg)
     {
-        buf[ctr] = read();
-        ctr++;
+    case E_SETUP_ACC:
+        e_setup_acc = value;
+        break;
     }
 
-    size = ctr;
+    return true;
+}
+
+uint8_t Fake_BMA020::readReg (uint8_t reg, uint8_t *buf, uint8_t &size)
+{
+    size = 1;
+
+    switch (reg)
+    {
+    case E_CHIPID:
+        (*buf) = 2;
+        delayMicroseconds (500);
+        break;
+
+    case E_SETUP_ACC:
+        (*buf) = e_setup_acc;
+        delayMicroseconds (500);
+        break;
+
+    // get some fake values
+    case BMA020REGISTER::E_DATA_LSBX:
+        const uint8_t maxReadSize = accPacket;
+        size = maxReadSize;
+        size_t ctr = 0;
+
+        for (ctr = 0; ctr < maxReadSize; ctr++)
+        {
+            buf[ctr] = getFakeVal();
+            delayMicroseconds (1000 / 6);
+        }
+
+        break;
+    }
 
     return size;
 }
 
-void BMA020::resetAcc()
+void Fake_BMA020::resetAcc()
 {
-    digitalWrite (ACCPIN, LOW);
-    delay (20);
-    digitalWrite (ACCPIN, HIGH);
-    delay (20);
-    Bma020.writeReg (BMA020REGISTER::E_CTRL_0A, 1 << 1);
-    delay (100);
+    delay (101);
 }
 
 // R14h bandwidth
@@ -58,11 +77,17 @@ constexpr uint8_t _bit_mask_Bandwidth = (1 << _BW0) | (1 << _BW1) | (1 << _BW2);
 constexpr uint8_t att_mask = (uint8_t) ((1 << _DONTUSE0) | (1 << _DONTUSE1) |
                                         (1 << _DONTUSE2));
 
-bool BMA020::setBandwidth (BMA020BANDWIDTH bandwidth)
+bool Fake_BMA020::setBandwidth (BMA020BANDWIDTH bandwidth)
 {
     uint8_t buf;
     uint8_t size = 1;
-    auto reg_14h = readReg (E_SETUP_ACC, &buf, size);
+
+    if (!readReg (E_SETUP_ACC, &buf, size))
+    {
+        return false;
+    }
+
+    auto reg_14h = buf;
     // preserve highest bits
     uint8_t attention = reg_14h & att_mask;
     // 11100111b = 11111111b ^ 00011000b
@@ -81,7 +106,7 @@ bool BMA020::setBandwidth (BMA020BANDWIDTH bandwidth)
     return bw == bandwidth;
 }
 
-BMA020BANDWIDTH BMA020::getBandwidth ()
+BMA020BANDWIDTH Fake_BMA020::getBandwidth ()
 {
     uint8_t buf;
     uint8_t size = 1;
@@ -94,11 +119,16 @@ constexpr uint8_t _RANGE0 = 0x3u;
 constexpr uint8_t _RANGE1 = 0x4u;
 constexpr uint8_t _bit_mask_Range = (1 << _RANGE0) | (1 << _RANGE1);
 
-bool BMA020::setRange (BMA020RANGE range)
+bool Fake_BMA020::setRange (BMA020RANGE range)
 {
     uint8_t reg_14h;
     uint8_t size = 1;
-    readReg (E_SETUP_ACC, &reg_14h, size);
+
+    if (!readReg (E_SETUP_ACC, &reg_14h, size))
+    {
+        return false;
+    }
+
     // preserve highest bits
     uint8_t attention = reg_14h & att_mask;
     // 11100111b = 11111111b ^ 00011000b
@@ -116,7 +146,7 @@ bool BMA020::setRange (BMA020RANGE range)
     return rg == range;
 }
 
-BMA020RANGE BMA020::getRange ()
+BMA020RANGE Fake_BMA020::getRange ()
 {
     uint8_t reg_14h;
     uint8_t size = 1;
@@ -124,7 +154,7 @@ BMA020RANGE BMA020::getRange ()
     return static_cast<BMA020RANGE> ((reg_14h & _bit_mask_Range) >> _RANGE0);
 }
 
-bool BMA020::isBMAReadable ()
+bool Fake_BMA020::isBMAReadable ()
 {
     uint8_t id = 0;
     uint8_t size = 1;
@@ -132,9 +162,9 @@ bool BMA020::isBMAReadable ()
     return  id == 2;
 }
 
-bool BMA020::tryFetchNewData (uint8_t *accBuf,
-                              uint16_t &curCount,
-                              uint16_t bufSize)
+bool Fake_BMA020::tryFetchNewData (uint8_t *accBuf,
+                                   uint16_t &curCount,
+                                   uint16_t bufSize)
 {
     bool dataAvail = false;
 
@@ -149,17 +179,17 @@ bool BMA020::tryFetchNewData (uint8_t *accBuf,
 
         if (dataAvail)
         {
-            curCount = (curCount + size) >= bufSize ? 0 : curCount;
             memcpy (accBuf + curCount, buf, size);
             curCount += size;
         }
     }
 
     // return true, if buff is full
-    return (curCount + size) == bufSize;
+    // (no more maxReadSize will fit)
+    return curCount > (bufSize - size);
 }
 
-String BMA020::getConfig()
+String Fake_BMA020::getConfig()
 {
     if (isBMAReadable() == false)
     {
@@ -169,5 +199,20 @@ String BMA020::getConfig()
     String config = "{\"Range\":\"" + String (getRange()) +
                     "\",\"Bandwidth\":\"" + getBandwidth() + "\"}";
     return  config;
+}
 
+uint8_t Fake_BMA020::getFakeVal()
+{
+    uint8_t ret = data[fakeValCounter];
+
+    // add one to ctr
+    fakeValCounter += 1;
+
+    // and reset if full
+    if (fakeValCounter >= sizeData)
+    {
+        fakeValCounter = 0;
+    }
+
+    return ret;
 }

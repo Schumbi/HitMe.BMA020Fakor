@@ -13,14 +13,14 @@ bool Commander::reboot()
 
 bool Commander::setBMARange (sensor::BMA020RANGE range)
 {
-    Bma020.setRange (range);
-    return Bma020.getRange() == range;
+    Fake_Bma020.setRange (range);
+    return Fake_Bma020.getRange() == range;
 }
 
 bool Commander::setBMABandWidth (sensor::BMA020BANDWIDTH bw)
 {
-    Bma020.setBandwidth (bw);
-    return Bma020.getBandwidth() == bw;
+    Fake_Bma020.setBandwidth (bw);
+    return Fake_Bma020.getBandwidth() == bw;
 }
 
 void Commander::process (const String &inp, ArduinoJson::JsonObject& rootOut)
@@ -111,7 +111,7 @@ void Commander::process (const String &inp, ArduinoJson::JsonObject& rootOut)
             break;
 
         case commands::cmd_reset_acc:
-            Bma020.resetAcc();
+            Fake_Bma020.resetAcc();
             break;
 
         case commands::cmd_reboot:

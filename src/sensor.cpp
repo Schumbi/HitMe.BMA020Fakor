@@ -64,7 +64,7 @@ const uint8_t sizeOfTimeStamp = sizeof (uint32_t); // byte
 const uint8_t sizeOfPacketId = sizeof (uint32_t); // byte
 
 const uint8_t bufferedAccData = 90;
-const uint16_t accDataBufSize = BMA020::accPacket * bufferedAccData;
+const uint16_t accDataBufSize = Fake_BMA020::accPacket * bufferedAccData;
 // start and end of data block, packetid and acc data buffer size
 const uint16_t sendBufSize = sizeOfTimeStamp + sizeOfTimeStamp +
                              sizeOfPacketId + accDataBufSize;
@@ -84,17 +84,17 @@ void setup()
     // pin to BMA
     pinMode (ACCPIN, OUTPUT);
     digitalWrite (ACCPIN, HIGH);
-    Bma020.begin (SDA, SCL);
+    Fake_Bma020.begin (SDA, SCL);
 
     accDataBuf = (uint8_t*)malloc (accDataBufSize * sizeof (uint8_t));
     sendBuf = (uint8_t*)malloc (sendBufSize * sizeof (uint8_t));
     int ms = 100;
 
     // initialize BMA020
-    while (!Bma020.isBMAReadable ())
+    while (!Fake_Bma020.isBMAReadable ())
     {
         Serial.print (F ("Restarting BMA -> \t"));
-        Bma020.resetAcc();
+        Fake_Bma020.resetAcc();
         delay (5 * ms);
     }
 
@@ -102,9 +102,9 @@ void setup()
     delay (2 * ms);
 
     // configure
-    bool suc = Bma020.setBandwidth (sensor::BMA020BANDWIDTH::BMA020_BW_25HZ);
+    bool suc = Fake_Bma020.setBandwidth (sensor::BMA020BANDWIDTH::BMA020_BW_25HZ);
     Serial.printf ("BW configured: %3s\t", suc ? "OK" : "NOK");
-    suc = Bma020.setRange (sensor::BMA020RANGE::BMA020_RANGE_8G);
+    suc = Fake_Bma020.setRange (sensor::BMA020RANGE::BMA020_RANGE_8G);
     Serial.printf ("Range configured: %3s\n", suc ? "OK" : "NOK");
     // network stuff
     udpData.begin (udpDataPort);
@@ -138,7 +138,13 @@ void loop()
         }
 
         // return true, if accDataBufSize of data was read
-        if (Bma020.tryFetchNewData (accDataBuf, dataBlockCounter, accDataBufSize))
+        // otherwise, insert data into buffer but do not send
+        // any data.
+        // dataBlockCounter holds the current count of data blocks
+        // tryFetchNewData returns with true when buffer is filled
+        if (Fake_Bma020.tryFetchNewData (accDataBuf,
+                                         dataBlockCounter,
+                                         accDataBufSize))
         {
             // get time and set end time
             uint32_t endTime = micros();
@@ -185,9 +191,9 @@ void loop()
         JsonObject& root = jsonBuffer.createObject();
         commander.process (data, root);
         // start of status msg
-        root[JKEY_readable] = Bma020.isBMAReadable();
-        root[JKEY_bandwidth].set<int> (Bma020.getBandwidth());
-        root[JKEY_range].set<int> (Bma020.getRange());
+        root[JKEY_readable] = Fake_Bma020.isBMAReadable();
+        root[JKEY_bandwidth].set<int> (Fake_Bma020.getBandwidth());
+        root[JKEY_range].set<int> (Fake_Bma020.getRange());
         root[JKEY_millis] = millis();
 
         String buf;
@@ -207,9 +213,9 @@ void loop()
             JsonObject& root = jsonBuffer.createObject();
 
             root[JKEY_type].set<int> (sensor::MSGTYPE::STATUS);
-            root[JKEY_readable] = Bma020.isBMAReadable();
-            root[JKEY_range].set<int> (Bma020.getRange());
-            root[JKEY_bandwidth].set<int> (Bma020.getBandwidth());
+            root[JKEY_readable] = Fake_Bma020.isBMAReadable();
+            root[JKEY_range].set<int> (Fake_Bma020.getRange());
+            root[JKEY_bandwidth].set<int> (Fake_Bma020.getBandwidth());
             root[JKEY_millis] = millis();
 
             String buf;
